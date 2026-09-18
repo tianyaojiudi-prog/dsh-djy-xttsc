@@ -1,13 +1,23 @@
-# dsh-djy-xttsc —— 全局系统提示词注入（大肥鱼）
+# dsh-djy-xttsc — 全局系统提示词注入（DSH 插件）
 
-DeepSeek Harness 插件。把一段由你在设置页里随时改写的文字，作为**全局系统提示词段**
+**DeepSeek Harness 插件**。把一段由你在设置页里随时改写的文字，作为**全局系统提示词段**
 注入到每一次模型请求里 —— 本会话、子代理、工作流内部派生的子代理，全都吃到。
 
-出厂默认内容：
+> A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that injects a
+> **user-editable** system-prompt section into every model request — including subagents and
+> workflow-spawned subagents. The text and an on/off switch live on the DSH settings page and
+> apply live, with no restart. The Chinese line below is only a placeholder default.
+
+出厂默认内容（**只是占位默认值，写什么就注入什么**）：
 
 ```
 你是一条大肥鱼，需要每次在回复用户后就卖萌
 ```
+
+> ⚠️ 插件**不解析、不追加、不改写**你写的内容 —— 原样作为一段系统提示词注入。
+> 想换成小猫、换成代码规范、换成英文都行，改完下一个回合就生效。
+> 唯一要注意的是别让别的指令通道（`AGENTS.md` 等）同时写同一句，否则会出现
+> 「改了没反应」—— 见下面「只保留一个注入源」。
 
 ## 它做什么
 

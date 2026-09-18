@@ -34,7 +34,27 @@
   },
   "scripts": {
     "check": "node --check index.js && node --check client.js",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs",
+    "test:integration": "node test/integration.mjs"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "system-prompt",
+    "prompt-injection",
+    "agent"
+  ],
+  "author": "tianyaojiudi-prog",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tianyaojiudi-prog/dsh-djy-xttsc.git"
+  },
+  "homepage": "https://github.com/tianyaojiudi-prog/dsh-djy-xttsc#readme",
+  "bugs": {
+    "url": "https://github.com/tianyaojiudi-prog/dsh-djy-xttsc/issues"
   },
   "engines": {
     "node": ">=18.0.0"

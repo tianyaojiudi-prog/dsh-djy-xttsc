@@ -131,13 +131,15 @@ node test/integration.mjs
 ```
 
 `test/smoke.mjs` 用桩件验证两个半区的接线（段的注册参数、设置改名后段文本实时变化、
-设置组件的渲染与开关写回）。
+设置组件的渲染与开关写回）。**零依赖**：clone 下来直接跑，不需要装过 dsh。
 
 `test/integration.mjs` 起一套最小真实宿主，验证的是真东西：段序确实是
 `harness:identity → dsh-djy-xttsc:global → deployment:persona-*`；子代理（另一个 scope +
-自己的 scoped 人格段）照样拿到这一段；设置写值后两边实时跟着变，关掉开关两边都消失；
+自己的 scoped 人格段）照样拿到这一段；设置写值后两边跟着变，关掉开关两边都消失；
 内置 schemastery 的序列化信封能被 host 自带的那份重建（设置界面走的就是这条）。
-脚本自己找 `$DSH_HOME/profiles/web`，找不到就用 `DSH_HOME` / `DSH_PROFILE` 环境变量覆盖。
+被测插件用仓库里这一份，**不需要先把插件装进 profile**；但它要借用 dsh 自带的那几个包，
+所以机器上得有装过 dsh 的 profile —— 脚本自己找 `$DSH_HOME/profiles/web`，
+找不到就用 `DSH_HOME` / `DSH_PROFILE` 环境变量指。
 
 ## 卸载
 

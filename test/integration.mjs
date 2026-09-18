@@ -11,9 +11,13 @@
  *
  *   node test/integration.mjs
  *
- * 本插件是被 pnpm 以 `link:`（软链接）装进 profile 的，Node 会拿源码目录当真实路径，
- * 所以这里不能写死裸包名 —— 统一用 createRequire 绑到 profile 根目录去解析 dsh 自带依赖。
- * profile 位置取 DSH_HOME（缺省 ~/.dsh）下的 profiles/web。
+ * 两个注意点：
+ *
+ * 1. 被测插件本体用仓库里这一份（`../index.js`），所以 clone 下来、只要机器上装过
+ *    dsh，就能直接 `node test/integration.mjs` 验证，不需要先把插件装进 profile。
+ * 2. dsh 自带的那几个包按 profile 根目录解析（createRequire）。因为这些包不一定是
+ *    本仓库的依赖，写死裸包名在 clone 里会 ERR_MODULE_NOT_FOUND。
+ *    profile 位置取 DSH_HOME（缺省 ~/.dsh）下的 profiles/web，可用 DSH_PROFILE 覆盖。
  */
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -30,7 +34,7 @@ if (!existsSync(join(profileRoot, 'package.json'))) {
   throw new Error('找不到 dsh profile: ' + profileRoot + '（用 DSH_HOME / DSH_PROFILE 覆盖）');
 }
 
-/** 按 profile 根目录解析：dsh 自带包 + 本插件都从那里找。 */
+/** 按 profile 根目录解析 dsh 自带的包（本仓库没有把它们列为依赖）。 */
 const fromProfile = createRequire(join(profileRoot, 'package.json'));
 const load = async (request) => import(pathToFileURL(fromProfile.resolve(request)).href);
 
@@ -38,7 +42,8 @@ const { Context } = await load('@deepseek-ai/cordis');
 const { default: SystemPrompt, renderPrompt } = await load('@deepseek-ai/dsh-system-prompt');
 const { default: SettingsFile } = await load('@deepseek-ai/dsh-settings-file');
 const { createScope } = await load('@deepseek-ai/dsh-scope');
-const mod = await load('dsh-djy-xttsc');
+/** 被测插件：仓库里这一份（自带 vendor，无需任何依赖）。 */
+const mod = await import('../index.js');
 
 const tmp = mkdtempSync(join(tmpdir(), 'dsh-djy-xttsc-'));
 

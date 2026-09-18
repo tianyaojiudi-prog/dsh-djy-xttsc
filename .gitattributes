@@ -1,0 +1,7 @@
+# 统一按文本处理，换行一律 LF 入库（Windows 检出也不改坏脚本）
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary

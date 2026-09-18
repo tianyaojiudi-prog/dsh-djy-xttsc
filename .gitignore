@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# 日志与临时文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 本地设置副本（真身在 ~/.dsh/settings.yaml）
+settings.yaml
+*.local.md
+
+# 编辑器 / 工具
+.vscode/
+.idea/

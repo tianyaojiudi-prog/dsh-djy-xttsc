@@ -1,0 +1,7 @@
+# 本文件用于「作为 bundle 安装」的路径（package.json 的 dsh.bundle.patch）。
+# 直接用 `dsh plugin add` / plugin_install 安装为一个普通 cordis 包时，
+# 安装流程会自行往 profile 的 cordis.patch.yml 写一行等价的 insert 记录，
+# 此时本文件不参与加载。
+- insert:
+    - id: djy-xttsc
+      name: dsh-djy-xttsc

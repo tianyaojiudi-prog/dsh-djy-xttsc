@@ -1,7 +1,13 @@
-# 本文件用于「作为 bundle 安装」的路径（package.json 的 dsh.bundle.patch）。
-# 直接用 `dsh plugin add` / plugin_install 安装为一个普通 cordis 包时，
-# 安装流程会自行往 profile 的 cordis.patch.yml 写一行等价的 insert 记录，
-# 此时本文件不参与加载。
+# dsh-djy-xttsc 作为 bundle 安装时用的插入行（package.json 的 dsh.bundle.patch）。
+#
+# 两条安装路径都用这一份：
+#   - `dsh plugin add <路径/仓库>`（推荐）：声明了 dsh.bundle 之后，安装流程会把本文件
+#     当作 profile 的一层 patch 加载，插件的条目 id 就是下面这个 `djy-xttsc`，
+#     客户端半区（client.js）按同一个 id 绑定设置表单。
+#   - 手工装：在 profile 的 cordis.patch.yml 里自己写一条等价的 insert 记录。
+#
+# ⚠ 条目 id 必须叫 `djy-xttsc`：dsh 0.1.7 起设置页的命名空间就是条目 id，
+#   换名字会让设置页绑不到这条插件的配置（页面上会显示成 Host 未注册）。
 - insert:
     - id: djy-xttsc
       name: dsh-djy-xttsc

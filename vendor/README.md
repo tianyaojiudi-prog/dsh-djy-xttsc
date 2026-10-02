@@ -22,5 +22,15 @@ Node 解析模块时会用源目录当真实路径，于是 `import z from 'sche
 `schema.toJSON()` 序列化给设置界面、以及遍历它做 `redactSecrets`。
 没有任何 `instanceof` 检查，所以同版本的独立副本可以正常充当命名空间 schema。
 
-升级 dsh 之后如果设置页报 schema 相关错误，把这两个文件重新从
-`~/.dsh/profiles/web/node_modules/{schemastery,cosmokit}/lib/index.mjs` 拷一遍即可。
+⚠️ 有一处**语义差异**要知道：dsh ≥ 0.1.7 自带的 schemastery（包名
+`@deepseek-ai/schemastery`）把 `meta.volatile` 当运行时契约 —— `Schema.resolve`
+会把标了 volatile 的节点包成 `Volatile` 对象（取值必须 `.get()`，dsh 自己的
+`plainConfig()` 就是这么解包的）。这里的 3.18.0 副本不认 volatile，
+所以 `Config({...})` 拿到的是普通对象。插件里读配置统一走 `index.js` 的
+`readConfig()`，两种形状都认，因此用哪一份都不会读出问题。
+
+升级 dsh 之后如果设置页报 schema 相关错误，把这两个文件重新从下面两处拷一遍即可：
+
+- dsh ≤ 0.1.6：`~/.dsh/profiles/<profile>/node_modules/{schemastery,cosmokit}/lib/index.mjs`
+- dsh ≥ 0.1.7：`~/.dsh/profiles/<profile>/node_modules/@deepseek-ai/{schemastery,cosmokit}/lib/index.mjs`
+  （同样要改掉裸导入与 sourceMappingURL 注释，见上面两条改动）

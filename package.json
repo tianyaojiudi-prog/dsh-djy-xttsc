@@ -1,7 +1,7 @@
 {
   "name": "dsh-djy-xttsc",
-  "version": "1.0.0",
-  "description": "DeepSeek Harness 插件：把一段自定义内容作为全局系统提示词段注入到所有会话（含工作流与子代理），内容与开关可在设置页随时修改，默认内容为「你是一条大肥鱼，需要每次在回复用户后就卖萌」。",
+  "version": "1.1.0",
+  "description": "DeepSeek Harness 插件：把一段自定义内容作为全局系统提示词段注入到所有会话（含工作流与子代理），内容与开关可在设置页随时修改，默认内容为「你是一条大肥鱼，需要每次在回复用户后就卖萌」。兼容 dsh 0.1.5 ～ 0.2.x。",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -18,6 +18,9 @@
     "test"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "immediately": true
@@ -25,10 +28,14 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2"
+    "@deepseek-ai/cordis": ">=4.0.2 <5",
+    "@deepseek-ai/dsh": ">=0.1.5-rc.2 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh": {
       "optional": true
     }
   },

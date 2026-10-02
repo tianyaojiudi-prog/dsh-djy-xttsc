@@ -4,9 +4,23 @@
  *   - 开关：是否启用注入
  *   - 文本框：随时改写要注入的内容
  *   - 保存 / 恢复默认
- * 读写走 ctx.settingsScope.bind('dsh-djy-xttsc')，也就是 Host 端注册的
- * 同一个设置命名空间：浏览器写 → Host 持久化 → Host 侧系统提示词段实时换文本。
+ *
+ * 两个 dsh 世代的设置传输不同，这里**只走一条**（两条都挂会撞车，见下）：
+ *   - dsh ≤ 0.1.6：ctx.settingsScope.bind('dsh-djy-xttsc')，
+ *     命名空间由 Host 端 settings.register 注册；
+ *   - dsh ≥ 0.1.7（含 0.2.0）：settingsScope 已被移除，改成
+ *     ctx.configForms.get('djy-xttsc')，命名空间就是 profile 里这条加载项的条目 id，
+ *     Host 端靠 Config 的 volatile 标记把它暴露给设置文档（见 index.js）。
+ * 两者的快照形状一致（status / value / writable），所以同一个界面组件直接复用。
+ *
+ * ⚠ settings.section 是 **list** 槽位，同一个 id 在同一个优先级上注册两次会直接抛
+ *   `list slot "settings.section" already has an entry with id "..."`，
+ *   条目随即变 failed —— 0.1.7 桌面版就是这么被拖进崩溃恢复的。
+ *   0.1.7 起两个服务同时存在，所以下面用 claimed 标志保证只挂一次。
  */
+// 冒烟测试在 Node 里加载本文件，没有 window；补一个空壳只影响测试，不影响浏览器。
+globalThis.window = globalThis.window || {};
+
 window.__ModuleLoader__.load({
   id: 'dsh-djy-xttsc',
   factory: (require) => {
@@ -16,12 +30,21 @@ window.__ModuleLoader__.load({
 
     var react = require('react');
 
-    /** 必须与 Host 端 index.js 的 NS 完全一致。 */
+    /** dsh ≤ 0.1.6 的设置命名空间（Host 端 settings.register 用的那个）。 */
     var NS = 'dsh-djy-xttsc';
+    /** dsh ≥ 0.1.7 的设置命名空间 = profile 里这条加载项的条目 id（见 cordis.patch.yml）。 */
+    var ENTRY_ID = 'djy-xttsc';
     var DEFAULT_CONTENT = '你是一条大肥鱼，需要每次在回复用户后就卖萌';
 
-    /** 依赖的客户端服务：slots 提供注册位，settingsScope 提供跨线读写。 */
-    var inject = ['slots', 'settingsScope'];
+    /**
+     * 这里**故意留空**：0.1.7 的客户端已经删掉 `settingsScope`，而前端启动检查
+     * 会把任何非 active 的条目判成致命错误：
+     *   web boot: 1 entry did not activate — pending (waiting for service: settingsScope)
+     * 硬依赖会让整个条目永远 pending，进而触发崩溃恢复并清掉 profile。
+     * 改成软依赖：见下面的 apply —— 按服务在不在挑一条路，两条都挂不上就安静跳过。
+     */
+    var inject = [];
+
 
     var S = {
       box: {
@@ -118,11 +141,24 @@ window.__ModuleLoader__.load({
 
     function statusText(status, writable) {
       if (status === 'loading') return '读取中…';
-      if (status === 'unavailable') return '不可用（Host 未注册 dsh-djy-xttsc 设置项）';
+      if (status === 'unavailable') return '不可用（Host 未注册这条配置项）';
       if (status === 'ready') {
         return writable ? '已连接 · 写入 Host 设置文件' : '只读（当前连接不落盘）';
       }
       return String(status);
+    }
+
+    /** 读一次快照；scope 不可用或抛错时退化成“读取中”，组件不炸。 */
+    function readScopeSnapshot(scope) {
+      try {
+        return scope.getSnapshot() ?? {
+          status: 'loading',
+          value: undefined,
+          writable: false
+        };
+      } catch (error) {
+        return { status: 'loading', value: undefined, writable: false };
+      }
     }
 
     function XttscSection(props) {
@@ -168,7 +204,9 @@ window.__ModuleLoader__.load({
         setMsg(null);
         Promise.resolve()
           .then(work)
-          .then(function () {
+          .then(function (result) {
+            // 0.1.7 的 configForms.set() 以 false 表示 Host 拒绝了这次写入。
+            if (result === false) throw new Error('Host 没有接受这次写入');
             setMsg({ kind: 'ok', text: '已保存' });
           })
           .catch(function (error) {
@@ -281,23 +319,141 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function apply(ctx) {
-      var scope;
-      try {
-        scope = ctx.settingsScope.bind({ namespace: NS });
-      } catch (error) {
-        ctx.logger?.warn?.('[dsh-djy-xttsc] settingsScope 绑定失败: ' + String(error));
-        return;
-      }
-
-      ctx.slots.inject('settings.section', () => ctx.slots.register({
+    /** 设置分区的注册参数（两代共用）。 */
+    function sectionOptions() {
+      return {
         name: 'settings.section',
         id: NS,
         order: 60,
-        label: () => '大肥鱼指令'
-      }, function () {
-        return react.createElement(XttscSection, { scope: scope });
-      }));
+        label: function () { return '大肥鱼指令'; }
+      };
+    }
+
+    /**
+     * 「大肥鱼指令」分区的挂载器。
+     *
+     * 关键点：settings.section 是 list 槽位，同 id 同优先级注册两次会直接抛错并把条目
+     * 打成 failed。0.1.7 起 configForms 与 settingsScope 同时存在，所以这里用 claimed
+     * 标志保证「谁先就位谁挂，另一个让路」。
+     */
+    function PageMounter(scope) {
+      this.scope = scope;
+      /** 这一轮的分区已经有人挂了。 */
+      this.claimed = false;
+      /** 当前这一代注册的令牌，用来做 only-if-current 的收回。 */
+      this.claim = null;
+      /** 当前这一代注册的 disposer。 */
+      this.off = null;
+      /** 挂载用的槽位服务（由 adopt 固定）。 */
+      this.slots = null;
+    }
+
+    /** 收回挂载（跟随注册的 disposer 用）。传 `claim` 时 only-if-current。 */
+    PageMounter.prototype.release = function release(claim) {
+      if (claim !== undefined && claim !== this.claim) return;
+      this.claim = null;
+      this.claimed = false;
+      if (!this.off) return;
+      var off = this.off;
+      this.off = null;
+      off();
+    };
+
+    /**
+     * 接管一次挂载：拿到这一代的令牌。之后 `register(claim)` 是「挂上这一代」，
+     * `release(claim)` 是「收回这一代」。已经被挂过就返回 null（让路）。
+     */
+    PageMounter.prototype.adopt = function adopt(slots) {
+      if (this.claimed) return null;
+      this.claim = {};
+      this.claimed = true;
+      this.slots = slots;
+      return this.claim;
+    };
+
+    /** 用 adopt 拿到的令牌真正注册分区；返回注册的 disposer。 */
+    PageMounter.prototype.register = function register(claim) {
+      if (claim !== this.claim || this.off) return this.off;
+      var self = this;
+      // 返回值必须是 disposer：whileServed 在命名空间不再被服务时要收回注册。
+      this.off = this.slots.inject('settings.section', function () {
+        return self.slots.register(sectionOptions(), function () {
+          return react.createElement(XttscSection, { scope: self.scope });
+        });
+      });
+      return this.off;
+    };
+
+    /**
+     * dsh ≥ 0.1.7 路线：把设置传输接到 configForms 的条目表单上。
+     * 命名空间要等 Host 把它投影进设置文档（Config 标了 volatile）才出现，
+     * 所以先读一次快照；没就位就交给 whileServed 盯着。
+     * @returns 跟随注册的 disposer。
+     */
+    function adoptConfigForms(ctx, controller) {
+      var forms = ctx.configForms;
+      if (!forms || typeof forms.get !== 'function' || typeof forms.whileServed !== 'function') {
+        return function () {};
+      }
+      // 不要 dispose 这个 scope —— configForms 提供方缓存并持有它，
+      // 条目每次热重载都从缓存里拿同一个实例，dispose 掉表单就再也不更新了。
+      var scope = forms.get(ENTRY_ID);
+      controller.scope = scope;
+      var register = function () {
+        var claim = controller.adopt(ctx.slots);
+        if (claim === null) return function () {}; // 已经被 settingsScope 那条路挂了
+        // 注意：slots.inject 的注册回调是异步生效的，register(claim) 自己按令牌
+        // 判断这一代是否还有效，所以这里直接注册即可。
+        controller.register(claim);
+        return function () {
+          controller.release(claim);
+        };
+      };
+      if (readScopeSnapshot(scope).status === 'ready') register();
+      else forms.whileServed([ENTRY_ID], register);
+      return function () {
+        controller.release();
+      };
+    }
+
+    /** dsh ≤ 0.1.6 路线：设置传输是 settingsScope，命名空间由 Host 端 register 注册。 */
+    function adoptSettingsScope(ctx, controller) {
+      var binder = ctx.settingsScope;
+      if (!binder || typeof binder.bind !== 'function') return false;
+      controller.scope = binder.bind({ namespace: NS });
+      var claim = controller.adopt(ctx.slots);
+      if (claim === null) return false;
+      controller.register(claim);
+      return true;
+    }
+
+    function apply(ctx) {
+      var controller = new PageMounter(null);
+      try {
+        // ---- dsh ≥ 0.1.7：设置传输是 configForms，命名空间 = profile 条目 id。----
+        ctx.inject(['slots', 'configForms'], function (sctx) {
+          try {
+            sctx.effect(function () {
+              return adoptConfigForms(sctx, controller);
+            }, 'dsh-djy-xttsc: settings page');
+          } catch (error) {
+            sctx.logger?.warn?.('[dsh-djy-xttsc] configForms 绑定失败: ' + String(error));
+          }
+        });
+
+        // ---- dsh ≤ 0.1.6：设置传输是 settingsScope。----
+        ctx.inject(['slots', 'settingsScope'], function (sctx) {
+          if (controller.claimed) return; // 上一路已经挂上了，让路
+          try {
+            adoptSettingsScope(sctx, controller);
+          } catch (error) {
+            sctx.logger?.warn?.('[dsh-djy-xttsc] settingsScope 绑定失败: ' + String(error));
+          }
+        });
+      } catch (error) {
+        // 兜底：apply 抛错会让条目变 failed，同样触发前端的致命启动检查。
+        ctx.logger?.warn?.('[dsh-djy-xttsc] 设置分区未挂载: ' + String(error));
+      }
     }
 
     exports.name = NS;

@@ -67,15 +67,6 @@ window.__ModuleLoader__.load({
         opacity: '0.72',
         fontSize: '12px'
       },
-      warn: {
-        margin: '0',
-        fontSize: '12px',
-        lineHeight: '1.6',
-        padding: '8px 10px',
-        borderRadius: '6px',
-        border: '1px solid rgba(234,179,8,0.35)',
-        background: 'rgba(234,179,8,0.08)'
-      },
       row: {
         display: 'flex',
         alignItems: 'center',
@@ -247,12 +238,6 @@ window.__ModuleLoader__.load({
           { style: S.hint },
           '开启后，下面的内容会作为全局系统提示词段注入到每一个会话——包括本会话、子代理，以及工作流内部派生的子代理。'
             + '它排在 Harness 身份段之后、人格与工具说明之前。修改即时生效，无需重启。'
-        ),
-        react.createElement(
-          'p',
-          { style: S.warn },
-          '这里就是唯一真源：改了却没反应，通常是别处还写了同一句。'
-            + '检查工作区 AGENTS.md / AGENTS.local.md、~/.dsh/AGENTS.md，以及 agent 预设里的人格段。'
         ),
         react.createElement(
           'label',

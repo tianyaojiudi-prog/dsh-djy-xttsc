@@ -29,6 +29,10 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+// 诊断是 opt-in（`DJY_XTTSC_DIAG=on` 才写）。这里显式关掉，防止开发机
+// 全局开着该变量时，测试往 ~/.dsh/djy-xttsc-diag.jsonl 写垃圾。
+process.env.DJY_XTTSC_DIAG = 'off';
+
 const DEFAULT_CONTENT = '你是一条大肥鱼，需要每次在回复用户后就卖萌';
 
 const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh');
@@ -177,15 +181,21 @@ try {
     // dsh ≥ 0.1.7 自带的 schemastery 会把 volatile 节点包成 Volatile 对象，
     // 取值要 .get()（dsh 自己的 plainConfig 就是这么干的）；插件里走 readConfig 兼容两种形状。
     const value = mod.readConfig(resolved);
+    // 2026-10-05：volatile 改为**逐字段**标记（根标记会把整包打成一个盒子，
+    // 拿不到内核的就地更新）。所以顶层是普通对象、字段才是 { get(), [write] } 引用，
+    // 取值必须逐字段 .get()；renderSectionText 内部就是这么做解包的。
+    const unwrap = (v) => (
+      v !== null && typeof v === 'object' && typeof v.get === 'function' ? v.get() : v
+    );
     assert.deepEqual(
-      { enabled: value.enabled, content: value.content },
+      { enabled: unwrap(value.enabled), content: unwrap(value.content) },
       { enabled: true, content: DEFAULT_CONTENT },
       'host 侧能重建本插件的 schema 并解出默认值',
     );
-    assert.deepEqual(
+    assert.equal(
       mod.renderSectionText(value),
       DEFAULT_CONTENT,
-      '插件读得懂 host 那份 schema 的解析结果',
+      '插件读得懂 host 那份 schema 的解析结果（逐字段解包）',
     );
   }
 

@@ -126,9 +126,19 @@ id 换了名字，0.1.7 起的设置页就绑不到这条插件的配置。
   字段 `enabled` / `content`）。从没动过设置页 → 用默认内容；改过一次 → 用户层覆盖默认值；
   想彻底回到出厂 → 「恢复默认」，或者把设置文件里的 `dsh-djy-xttsc` 分节删掉。
 - **0.1.7 起**：`settings.register` 已随设置模型改版移除，改成「按插件的 `Config`
-  自动生成配置表单」。所以本插件的 `Config` 标了 `extra('volatile', true)`：
-  只有 volatile 字段才进设置文档、才能在运行中改。设置页写值 → 写进 profile 的
-  `cordis.patch.yml` → 条目重启 → 插件的 `apply()` 拿到新 config。
+  自动生成配置表单」。`Config` 的每个字段标了 `extra('volatile', true)`：
+  设置页写值 → 写进 profile 的 `cordis.patch.yml` → 内核走 **`_commitVolatile`
+  「就地提交」**，把新值写进配置里的**运行中引用**（**不重启条目**）→
+  段文本函数下次求值就读到新值。
+
+  ⚠️ 这条链路的前提是配置里**确实存在**那种引用：
+  `{ get(), [Symbol.for("cosmokit.volatile.write")] }`，而引用是
+  `Schema.resolve()` 解析配置时创建的。所以 `Config` 必须由**认 volatile 的**
+  schemastery 构造（见 `vendor/README.md`）—— 否则内核会判定「只 volatile 变化、
+  **不重启条目**」，却又**找不到引用可写**，变更被**静默丢弃**：
+  设置页显示「已保存」、`cordis.patch.yml` 也写对了，但注入内容不变、
+  关闭重开又变回旧值，**必须重启 App 才生效**。
+  这曾是 1.1.0 的 bug，1.1.1 已修。
 
 也可以不用设置页，直接在 profile 的 `cordis.patch.yml` 里给这条已存在的加载项挂配置
 （`base` 层，会被用户层覆盖）：
@@ -140,6 +150,34 @@ id 换了名字，0.1.7 起的设置页就绑不到这条插件的配置。
     enabled: true
     content: 你是一条大肥鱼，需要每次在回复用户后就卖萌
 ```
+
+## 诊断（可选，默认关闭）
+
+排查「设置页保存了但没生效」这类问题时，可以让插件把现场吐出来：
+
+```powershell
+# 给 dsh 进程设上，然后重启 dsh
+[Environment]::SetEnvironmentVariable('DJY_XTTSC_DIAG', 'on', 'User')
+```
+
+之后每轮它读到的配置来源形状、以及渲染出的文本，都会**在变化时**追加一行到
+`~/.dsh/djy-xttsc-diag.jsonl`（每行一个 JSON，平时几乎不产生写入）：
+
+```json
+{"kind":"activate","schema":"vendor",
+ "config":{"isBox":false,"contentIsBox":true,"content":"…"},
+ "fiberConfig":{...}}
+```
+
+关键字段：
+
+| 字段 | 含义 |
+|---|---|
+| `schema` | `host` = 用了宿主的 `@deepseek-ai/schemastery`；`vendor` = 退回内置副本（两份现在都支持 volatile）|
+| `contentIsBox` | **是否为 `true` 是这条链路能否热更的前提**：配置字段必须是内核可就地提交的「运行中引用」。为 `false` ⇒ 保存会被静默丢弃、必须重启 App |
+| `text` | 该轮实际渲染出的注入文本 |
+
+关掉：把变量设成 `on` 以外的任何值（或删掉），重启 dsh。
 
 ## 验证
 
@@ -175,6 +213,24 @@ dsh plugin remove dsh-djy-xttsc
 
 ## 变更记录
 
+- **1.1.1** —— 修「设置页保存后必须重启 App 才生效」（1.1.0 引入的 bug）：
+  - **根因**：`vendor/schemastery.mjs` 是 3.18.0 的副本，**不认 `meta.volatile`**。
+    插件导出的是**可调用 schema**，调用它走的是**构造它的那份** `Schema.resolve`，
+    于是 `Config` 解析出来全是普通值 —— 内核**没有引用可就地提交**，
+    却又因「只 volatile 变化」而**不重启条目**，变更被静默丢弃。
+    （实证：诊断里 `contentIsBox: false` ⇒ 修复后 `true`。）
+  - `vendor/schemastery.mjs`：**补上 volatile 引用协议**
+    （用全局共享符号 `Symbol.for("cosmokit.volatile.write")`，与内核同一颗）。
+  - `index.js`：volatile 从**根节点**改到**逐字段**（根标记会被
+    `Schema.resolve` 打成一整包，拿不到就地更新）；读取时**逐字段解包**引用。
+  - `index.js`：`Config` 优先用宿主的 `@deepseek-ai/schemastery`（三级兜底；
+    解析不到时回退内置副本 —— 那份现在也已支持 volatile）。
+  - `index.js`：旧设置通道单独喂**不带 volatile** 的 `LegacyConfig`，
+    否则 0.1.5 / 0.1.6 的 `settings.register` 拿到引用对象会注册失败。
+  - 测试：修掉 smoke 里一条把错误假设固化的断言，新增回归用例；
+    integration 加强旧通道断言（专盯上面那条冲突）。
+  - 新增**可选**诊断：`DJY_XTTSC_DIAG=on` 时把每轮读到的配置来源形状
+    追加到 `~/.dsh/djy-xttsc-diag.jsonl`（默认关）。
 - **1.1.0** —— 适配 dsh 0.1.7 ～ 0.2.x 的设置模型改版，同时保持 0.1.5 / 0.1.6 可用：
   - 客户端：`settingsScope`（≤0.1.6）与 `configForms`（≥0.1.7）两条路**互斥**，
     只挂一次设置分区。此前两条路同时挂会用同一个 id 注册两次，list 槽位直接抛错，

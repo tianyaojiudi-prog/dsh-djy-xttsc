@@ -249,8 +249,38 @@ var require_index = __commonJS({
     Schema.extend = /* @__PURE__ */ __name(function extend(type, resolve) {
       resolvers[type] = resolve;
     }, "extend");
+    // ── 2026-10-05 本地补丁：volatile 支持 ────────────────────────────────────
+    // 内核自带的 schemastery 有 volatile（asar 里出现 859 次），这份 vendored
+    // 副本原本**一次都没有**。而插件导出的是一个**可调用 schema**，调用它走的是
+    // 本文件自己的 `Schema.resolve`（见上面第 45 行）。缺了这段就会：
+    //   设置页写值 → 内核判定「只 volatile 变化、不重启条目」→ 却找不到任何
+    //   「运行中的引用」可就地提交 → 变更被**静默丢弃**，必须重启 App 才生效。
+    //   （2026-10-05 实测：真机里宿主包解析不到、回退到本副本，症状正是如此。）
+    //
+    // 引用协议是 cosmokit 的共享符号 `Symbol.for("cosmokit.volatile.write")`，
+    // 走全局注册表，所以这里自建的引用与内核认的是同一颗符号。
+    //
+    // ⚠ 0.1.5/0.1.6 的旧设置通道**不认识**引用对象，所以 index.js 里给
+    // `settings.register` 喂的是不带 volatile 的 LegacyConfig，两者必须分开。
+    var kVolatileWrite = Symbol.for("cosmokit.volatile.write");
+    /** 建立一个「运行中的引用」：`get()` 取当前快照，`[write]` 由内核就地换值。 */
+    function createVolatile(value) {
+      let current = value;
+      return Object.freeze({
+        get: () => current,
+        [kVolatileWrite]: (next) => {
+          current = next;
+        }
+      });
+    }
     Schema.resolve = /* @__PURE__ */ __name(function resolve(data, schema, options = {}, strict = false) {
       if (!schema) return [data];
+      if (schema.meta && schema.meta.volatile) {
+        const inner = Schema(schema);
+        inner.meta = { ...schema.meta, volatile: false };
+        const [value, adapted] = Schema.resolve(data, inner, options, strict);
+        return [createVolatile(value), adapted];
+      }
       if (options.ignore?.(data, schema)) return [data];
       if (isNullable(data) && schema.type !== "lazy") {
         if (schema.meta.required) throw new ValidationError(`missing required value`, options);
